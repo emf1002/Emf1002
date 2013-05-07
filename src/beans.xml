@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+	http://www.springframework.org/schema/beans/spring-beans-2.5.xsd
+	http://www.springframework.org/schema/context
+	http://www.springframework.org/schema/context/spring-context-2.5.xsd
+	http://www.springframework.org/schema/aop
+	http://www.springframework.org/schema/aop/spring-aop-2.5.xsd
+	http://www.springframework.org/schema/tx 
+	http://www.springframework.org/schema/tx/spring-tx-2.5.xsd">
+	<!-- 注入的方式可以用annotation -->
+	<context:annotation-config />
+	<!-- 自动检索需要注册对象的包 -->
+	<context:component-scan base-package="com" />
+	<!-- 允许注解方式的AOP -->
+	<aop:aspectj-autoproxy />
+	<bean
+		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<property name="locations">
+			<list>
+				<value>classpath:jdbc.properties</value>
+				<value>classpath:sysconfig.properties</value>
+			</list>
+		</property>
+	</bean>
+	<!-- 注入数据源 -->
+	<bean id="dataSource" destroy-method="close"
+		class="org.apache.commons.dbcp.BasicDataSource">
+		<property name="driverClassName"
+			value="${jdbc.driverClassName}" />
+		<property name="url" value="${jdbc.url}" />
+		<property name="username" value="${jdbc.username}" />
+		<property name="password" value="${jdbc.password}" />
+		<!-- Connection Pooling Info -->
+		<property name="initialSize" value="20" />
+		<property name="maxActive" value="100" />
+		<property name="maxIdle" value="30" />
+		<property name="maxWait" value="1000" />
+		<property name="poolPreparedStatements" value="true" />
+		<property name="defaultAutoCommit" value="false" />
+		
+	</bean>
+	
+	<!-- EHCACHE -->
+	<bean id="defaultCacheManager" class="org.springframework.cache.ehcache.EhCacheManagerFactoryBean">    
+		<property name="configLocation">    
+			<value>classpath:ehcache.xml</value>    
+		</property>    
+	</bean>    
+        
+	<!-- 定义ehCache的工厂，并设置所使用的Cache name -->    
+	<bean id="ehCache" class="org.springframework.cache.ehcache.EhCacheFactoryBean">    
+		<property name="cacheManager">    
+			<ref local="defaultCacheManager"/>    
+		</property>    
+		<property name="cacheName">    
+			<value>DEFAULT_CACHE</value>    
+		</property>    
+	</bean> 
+	
+	<!-- 注入sessionFactory -->
+	<bean id="sf"
+		class="org.springframework.orm.hibernate3.annotation.AnnotationSessionFactoryBean">
+		<property name="dataSource" ref="dataSource" />
+		<!-- -->
+		<property name="packagesToScan">
+			<list>
+				<value>com.*.model</value>
+				<value>com.*.*.model</value>
+				<value>com.*.*.*.model</value>
+				<value>com.*.*.model.view</value>
+			</list>
+		</property>
+		
+		<!--
+			<property name="annotatedClasses">
+				 <list>
+					   <value>com.desktop.rbac.model.EndUser</value>
+					   <value>com.desktop.rbac.model.Department</value>
+					   <value>com.desktop.rbac.model.Permission</value>
+					   <value>com.desktop.rbac.model.Role</value>
+				 </list>
+			   </property>
+		 -->
+		<property name="hibernateProperties">
+			<props>
+				<!-- 定义数据库方言 -->
+				<prop key="hibernate.dialect">org.hibernate.dialect.Oracle10gDialect</prop>
+
+				<!-- 输出sql -->
+				<prop key="hibernate.show_sql">true</prop>
+				<!-- 输出格式化的sql -->
+				<prop key="hibernate.format_sql">false</prop>
+				<prop key="hibernate.hbm2ddl.auto">none</prop>
+				<!-- 如果不想交spring管理事务就上这个代码
+						<prop key="hibernate.current_session_context_class">thread</prop>
+					--> 
+				<!--允许使用二级缓存-->
+				<prop key="hibernate.cache.use_second_level_cache">true</prop>
+				<!--选择的缓存器是EhCache-->
+				<prop key="hibernate.cache.provider_class">org.hibernate.cache.EhCacheProvider</prop>
+				<!--允许使用查询缓存-->
+				<prop key="hibernate.cache.use_query_cache">true</prop>
+				<prop key="hibernate.connection.pool_size">2048</prop>		
+			</props>
+		</property>
+	</bean>
+	<!--注入hibernateTemplate模板-->
+	<bean id="hibernateTemplate" class="org.springframework.orm.hibernate3.HibernateTemplate">
+		<property name="sessionFactory" ref="sf"></property>
+	</bean>
+		<!-- 用spring管理事务 -->
+	<bean id="txManager"
+		class="org.springframework.orm.hibernate3.HibernateTransactionManager">
+		<property name="sessionFactory" ref="sf" />
+	</bean>
+
+	<aop:config>
+		<aop:pointcut id="bussinessService"
+			expression="(execution(public * com.desktop.service.*.*(..))) || (execution(public * com.desktop.security.*.*(..))) || (execution(public * com.jbpm.**.service.*.*(..)))" />
+		<aop:advisor pointcut-ref="bussinessService"
+			advice-ref="txAdvice" />
+	</aop:config>
+
+	<tx:advice id="txAdvice" transaction-manager="txManager">
+		<tx:attributes>
+			<tx:method name="exists" read-only="false" />
+			<tx:method name="add*" propagation="REQUIRED"/>
+			<tx:method name="*" propagation="REQUIRED"/>
+			<tx:method name="delete*" propagation="REQUIRED"/>
+			<tx:method name="cutOffIncidence" propagation="REQUIRED"/>
+			<tx:method name="Load*" propagation="REQUIRED"/>
+			<tx:method name="impEqTypeParams" propagation="REQUIRED"/>
+			<tx:method name="do*" propagation="REQUIRED"/>
+			<tx:method name="save*" propagation="REQUIRED"/>
+		</tx:attributes>
+	</tx:advice>
+</beans>
